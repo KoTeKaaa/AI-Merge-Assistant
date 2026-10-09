@@ -1,0 +1,38 @@
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.sqlite3
+*.db
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Node / frontend builds
+node_modules/
+dist/
+build/
+coverage/
+.npm/
+*.log
+
+# OS / editor extras
+*.swp
+*.swo
