@@ -6,6 +6,7 @@ from math import ceil
 import httpx
 from google import genai
 from google.genai import errors, types
+from pydantic import ValidationError
 
 from .provider import ProviderError, ProviderRequest, ProviderResponse, TokenUsage
 from .settings import ConfigurationError, LLMSettings
@@ -58,11 +59,27 @@ class GeminiProvider:
         if isinstance(error, ProviderError):
             return error
         if isinstance(error, errors.APIError):
-            return ProviderError("provider_http_error")
+            if error.code in (401, 403):
+                return ProviderError(
+                    "provider_unauthorized" if error.code == 401 else "provider_forbidden"
+                )
+            if error.code == 404:
+                return ProviderError("model_unavailable")
+            if error.code == 429:
+                return ProviderError("provider_quota", retryable=True)
+            if error.code == 408:
+                return ProviderError("provider_timeout", retryable=True)
+            if error.code in (500, 502, 503, 504):
+                return ProviderError("provider_unavailable", retryable=True)
+            return ProviderError(
+                "provider_invalid_request" if error.code == 400 else "provider_http_error"
+            )
         if isinstance(error, httpx.TimeoutException):
             return ProviderError("provider_timeout", retryable=True)
         if isinstance(error, httpx.TransportError):
             return ProviderError("provider_unavailable", retryable=True)
+        if isinstance(error, ValidationError):
+            return ProviderError("invalid_provider_response")
         return ProviderError("provider_failure")
 
     def _config(self, request: ProviderRequest) -> types.GenerateContentConfig:
@@ -101,6 +118,12 @@ class GeminiProvider:
             parts = candidate.content.parts if candidate.content else []
             texts = []
             for part in parts or []:
+                if set(part.model_dump(exclude_none=True)) - {
+                    "text",
+                    "thought",
+                    "thought_signature",
+                }:
+                    raise ProviderError("unexpected_content")
                 if part.thought:
                     continue
                 if part.text is None:
