@@ -311,6 +311,16 @@ CoverageFeedback хранит covered/executable_changed_lines и uncovered по
 Feedback.validate_for сверяет run/snapshot/hash, строки готовых артефактов, измеряемый набор
 и uncovered. Источники changed_lines закрепляются при усечении; XML/coverage-файлы модуль не читает.
 
+
+**ASSUMPTION T23:** `ERROR_REPAIR_PROMPT`, версия `tests.repair.errors.v1`, получает
+неизменённые требования/сценарии и RepairInput с previous_bundle/feedback внутри JSON-данных.
+Диагностика и прежний код не становятся системными инструкциями. Ответ RepairDraft
+(`repair.py`) имеет action=replace с полным bundle либо action=cannot_repair с bundle=null
+и непустым explanation. Исправляются только собственные артефакты; дефект production,
+существующая регрессия и проблема окружения могут потребовать явного cannot_repair.
+RepairResult добавляет run/snapshot, previous_bundle_hash и iteration; replace остаётся
+непроверенным предложением, cannot_repair не является пустым успешным набором.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
