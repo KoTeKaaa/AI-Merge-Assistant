@@ -228,6 +228,19 @@ ID снимка и источников, профиль и пути сохран
 данных и не добавляются к системным инструкциям. Файлы, окружение, сеть, AST и документы
 сборщик не читает. Требуется явный model ID, в том числе синтетический для fake.
 
+
+**ASSUMPTION T15:** у PreparedSource добавлен строгий boolean `optional=false`.
+Только `code` и `existing_test` могут быть явно необязательными; описание, требования
+и diff всегда обязательны. `prepare_request` (`budget.py`) получает тот же StageProvider,
+который затем используется для генерации, и считает полный собранный запрос через его порт.
+Граница `max_input_tokens` включительна; неизвестный/некорректный размер — ошибка.
+При превышении лимита все optional-фрагменты исключаются одной группой и выполняется
+одна перепроверка: всего не более двух логических подсчётов. Если обязательная часть
+не помещается, возвращается `context_limit_exceeded`, генерация не вызывается.
+BudgetedRequest содержит фактические context/request, input_tokens, count_checks и
+отсортированные omitted_source_ids; последующий сервис связывает ответ именно с этим
+эффективным context, чтобы исключённые источники не считались доступными модели.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
