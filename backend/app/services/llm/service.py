@@ -8,9 +8,17 @@ from pydantic import ValidationError
 from .budget import prepare_request
 from .bundles import TestBundle, TestBundleDraft
 from .contracts import GenerationContext
-from .decoding import decode_scenarios, decode_tests
-from .prompts import DEFAULT_SCENARIOS_PROMPT, LAZY_SCENARIOS_PROMPT, PYTEST_PROMPT
+from .decoding import decode_repair, decode_scenarios, decode_tests
+from .feedback import ValidationFeedback
+from .prompts import (
+    COVERAGE_REPAIR_PROMPT,
+    DEFAULT_SCENARIOS_PROMPT,
+    ERROR_REPAIR_PROMPT,
+    LAZY_SCENARIOS_PROMPT,
+    PYTEST_PROMPT,
+)
 from .provider import LLMProvider, ProviderError
+from .repair import RepairDraft, RepairInput, RepairResult
 from .retries import StageProvider
 from .scenarios import ScenarioDraftSet, ScenarioSet
 from .settings import LLMSettings
@@ -34,7 +42,7 @@ class LLMService:
     def _validated_context(context: GenerationContext) -> GenerationContext:
         try:
             # Revalidate even DTOs copied with model_copy/model_construct at caller boundaries.
-            return GenerationContext.model_validate(context.model_dump())
+            return GenerationContext.model_validate(context.model_dump(warnings=False))
         except ValidationError:
             raise ProviderError("invalid_context") from None
 
@@ -63,14 +71,14 @@ class LLMService:
         except ValueError:
             raise ProviderError("invalid_source_reference") from None
 
-    def generate_tests(self, context: GenerationContext, scenarios: ScenarioSet) -> TestBundle:
-        validated = self._validated_context(context)
+    @staticmethod
+    def _validated_scenarios(context: GenerationContext, scenarios: ScenarioSet) -> ScenarioSet:
         try:
-            validated_scenarios = ScenarioSet.model_validate(scenarios.model_dump())
-            expected_origin = "inferred" if validated.mode == "lazy" else "requirements"
+            validated_scenarios = ScenarioSet.model_validate(scenarios.model_dump(warnings=False))
+            expected_origin = "inferred" if context.mode == "lazy" else "requirements"
             if (
-                validated_scenarios.run_id != validated.run_id
-                or validated_scenarios.snapshot_id != validated.snapshot.snapshot_id
+                validated_scenarios.run_id != context.run_id
+                or validated_scenarios.snapshot_id != context.snapshot.snapshot_id
                 or validated_scenarios.expectation_origin != expected_origin
             ):
                 raise ValueError("scenarios do not match generation context")
@@ -79,10 +87,15 @@ class LLMService:
                     scenarios=validated_scenarios.scenarios,
                     ambiguities=validated_scenarios.ambiguities,
                 ),
-                validated,
+                context,
             )
+            return validated_scenarios
         except ValueError:
             raise ProviderError("invalid_scenarios") from None
+
+    def generate_tests(self, context: GenerationContext, scenarios: ScenarioSet) -> TestBundle:
+        validated = self._validated_context(context)
+        validated_scenarios = self._validated_scenarios(validated, scenarios)
         stage = StageProvider(self._provider, self._settings, clock=self._clock, wait=self._wait)
         prepared = prepare_request(
             validated,
@@ -103,3 +116,73 @@ class LLMService:
             )
         except ValueError:
             raise ProviderError("invalid_test_bundle") from None
+
+    def repair_tests(
+        self,
+        context: GenerationContext,
+        scenarios: ScenarioSet,
+        previous_bundle: TestBundle,
+        feedback: ValidationFeedback,
+    ) -> RepairResult:
+        validated = self._validated_context(context)
+        validated_scenarios = self._validated_scenarios(validated, scenarios)
+        try:
+            previous = TestBundle.model_validate(previous_bundle.model_dump(warnings=False))
+            TestBundle.from_context(
+                TestBundleDraft(files=previous.files), validated, validated_scenarios
+            )
+            checked = ValidationFeedback.model_validate(
+                feedback.model_dump(warnings=False)
+            ).validate_for(validated, previous)
+        except ValueError:
+            raise ProviderError("invalid_feedback") from None
+        if checked.iteration > self._settings.max_repairs:
+            raise ProviderError("repair_limit_exceeded")
+        if checked.reason == "coverage_missing":
+            raise ProviderError("coverage_report_missing")
+        template = (
+            COVERAGE_REPAIR_PROMPT if checked.reason == "coverage_gap" else ERROR_REPAIR_PROMPT
+        )
+        stage = StageProvider(self._provider, self._settings, clock=self._clock, wait=self._wait)
+        prepared = prepare_request(
+            validated,
+            self._settings,
+            stage,
+            system_instruction=template.system_instruction,
+            response_schema=RepairDraft.model_json_schema(),
+            scenarios=validated_scenarios,
+            repair=RepairInput(previous_bundle=previous, feedback=checked),
+        )
+        decision = decode_repair(stage.generate(prepared.request))
+        replacement = None
+        if decision.bundle is not None:
+            try:
+                replacement = TestBundle.from_context(
+                    decision.bundle,
+                    prepared.context,
+                    validated_scenarios,
+                    prompt_version=template.version,
+                    omitted_source_ids=prepared.omitted_source_ids,
+                )
+                old_links = {
+                    (file.path, case) for file in previous.files for case in file.scenario_ids
+                }
+                new_links = {
+                    (file.path, case) for file in replacement.files for case in file.scenario_ids
+                }
+                if not old_links <= new_links:
+                    raise ValueError("repair must preserve previous files and scenario links")
+            except ValueError:
+                raise ProviderError("invalid_repair_bundle") from None
+            if replacement.bundle_hash == previous.bundle_hash:
+                raise ProviderError("repair_unchanged")
+        return RepairResult(
+            action=decision.action,
+            bundle=replacement,
+            explanation=decision.explanation,
+            schema_version="1",
+            run_id=validated.run_id,
+            snapshot_id=validated.snapshot.snapshot_id,
+            previous_bundle_hash=previous.bundle_hash,
+            iteration=checked.iteration,
+        )

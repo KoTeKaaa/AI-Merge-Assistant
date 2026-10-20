@@ -6,6 +6,7 @@ from typing import Any
 
 from .contracts import GenerationContext
 from .provider import ProviderRequest
+from .repair import RepairInput
 from .scenarios import ScenarioSet
 from .settings import ConfigurationError, LLMSettings
 
@@ -17,6 +18,7 @@ def build_request(
     system_instruction: str,
     response_schema: dict[str, Any],
     scenarios: ScenarioSet | None = None,
+    repair: RepairInput | None = None,
 ) -> ProviderRequest:
     """Serialize source text as JSON data; never splice it into system instructions."""
     if settings.model_id is None:
@@ -26,6 +28,8 @@ def build_request(
     if scenarios is not None:
         payload["scenario_set"] = scenarios.model_dump(mode="json")
         payload["scenario_set"]["scenarios"].sort(key=lambda scenario: scenario["scenario_id"])
+    if repair is not None:
+        payload["repair"] = repair.model_dump(mode="json")
     return ProviderRequest(
         model_id=settings.model_id,
         system_instruction=system_instruction,

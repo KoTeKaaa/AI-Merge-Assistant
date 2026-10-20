@@ -33,6 +33,7 @@ class PreparedSource(Contract):
     text: Annotated[str, StringConstraints(min_length=1)]
     path: Text | None = None
     optional: Annotated[bool, Field(strict=True)] = False
+    start_line: Annotated[int, Field(gt=0, strict=True)] = 1
 
     @model_validator(mode="after")
     def require_content(self) -> Self:
@@ -49,6 +50,18 @@ class EnvironmentProfile(Contract):
     dependencies: tuple[Text, ...] = ()
 
 
+class ChangedLines(Contract):
+    path: Text
+    source_id: Text
+    lines: Annotated[tuple[Annotated[int, Field(gt=0, strict=True)], ...], Field(min_length=1)]
+
+    @model_validator(mode="after")
+    def unique_lines(self) -> Self:
+        if len(self.lines) != len(set(self.lines)):
+            raise ValueError("changed lines must be unique")
+        return self
+
+
 class GenerationContext(Contract):
     schema_version: Literal["1"]
     run_id: Text
@@ -58,6 +71,7 @@ class GenerationContext(Contract):
     environment: EnvironmentProfile
     generated_tests_dir: Text
     protected_paths: tuple[Text, ...] = ()
+    changed_lines: tuple[ChangedLines, ...] = ()
 
     @model_validator(mode="after")
     def validate_sources(self) -> Self:
@@ -72,4 +86,15 @@ class GenerationContext(Contract):
         if self.snapshot.kind == "upload":
             if self.mode != "default" or "requirements" not in kinds:
                 raise ValueError("upload requires default mode and extracted requirements")
+        paths = [file.path for file in self.changed_lines]
+        if len(paths) != len(set(paths)):
+            raise ValueError("changed file paths must be unique")
+        sources = {source.source_id: source for source in self.sources}
+        for file in self.changed_lines:
+            source = sources.get(file.source_id)
+            if source is None or source.kind != "code" or source.path != file.path:
+                raise ValueError("changed lines require a matching prepared code source")
+            end_line = source.start_line + len(source.text.splitlines()) - 1
+            if any(line < source.start_line or line > end_line for line in file.lines):
+                raise ValueError("changed line is outside its prepared fragment")
         return self

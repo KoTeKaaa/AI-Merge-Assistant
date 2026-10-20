@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from .bundles import TestBundleDraft
 from .contracts import Contract
 from .provider import ProviderError, ProviderResponse
+from .repair import RepairDraft
 from .scenarios import ScenarioDraftSet
 
 
@@ -61,3 +62,7 @@ def decode_scenarios(response: ProviderResponse) -> ScenarioDraftSet:
 
 def decode_tests(response: ProviderResponse) -> TestBundleDraft:
     return _decode(response, TestBundleDraft)
+
+
+def decode_repair(response: ProviderResponse) -> RepairDraft:
+    return _decode(response, RepairDraft)

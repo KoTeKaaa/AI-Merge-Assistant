@@ -7,6 +7,7 @@ from pydantic import Field
 from .context import build_request
 from .contracts import Contract, GenerationContext, Text
 from .provider import LLMProvider, ProviderError, ProviderRequest
+from .repair import RepairInput
 from .scenarios import ScenarioSet
 from .settings import LLMSettings
 
@@ -27,6 +28,7 @@ def prepare_request(
     system_instruction: str,
     response_schema: dict[str, Any],
     scenarios: ScenarioSet | None = None,
+    repair: RepairInput | None = None,
 ) -> BudgetedRequest:
     """Return a request within the input budget; never call generate here."""
     current = context
@@ -35,6 +37,7 @@ def prepare_request(
         if scenarios is not None
         else set()
     )
+    pinned_ids.update(file.source_id for file in context.changed_lines)
     omitted: tuple[str, ...] = ()
     for check in (1, 2):
         request = build_request(
@@ -43,6 +46,7 @@ def prepare_request(
             system_instruction=system_instruction,
             response_schema=response_schema,
             scenarios=scenarios,
+            repair=repair,
         )
         tokens = provider.count_tokens(request)
         if type(tokens) is not int or tokens < 0:
