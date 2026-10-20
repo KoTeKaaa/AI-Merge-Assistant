@@ -7,6 +7,7 @@ from pydantic import Field, model_validator
 from .bundles import TestBundle, TestBundleDraft
 from .contracts import Contract, Text
 from .feedback import ValidationFeedback
+from .telemetry import StageMetadata
 
 
 class RepairInput(Contract):
@@ -32,6 +33,7 @@ RepairDraft = RepairDecision[TestBundleDraft]
 
 
 class RepairResult(RepairDecision[TestBundle]):
+    metadata: StageMetadata | None = None
     schema_version: Literal["1"]
     run_id: Text
     snapshot_id: Text

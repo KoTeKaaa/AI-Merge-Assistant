@@ -8,6 +8,7 @@ from pydantic import Field, field_validator, model_validator
 
 from .contracts import Contract, GenerationContext, Text
 from .scenarios import ScenarioSet
+from .telemetry import StageMetadata
 
 
 def relative_parts(path: str) -> tuple[str, ...]:
@@ -78,6 +79,7 @@ def compute_bundle_hash(files: tuple[GeneratedFile, ...]) -> str:
 class TestBundle(TestBundleDraft):
     """Service-bound artifacts, with no claims about execution or coverage."""
 
+    metadata: StageMetadata | None = None
     schema_version: Literal["1"]
     run_id: Text
     snapshot_id: Text

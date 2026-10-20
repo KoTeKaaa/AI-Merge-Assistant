@@ -26,10 +26,12 @@ def build_request(
     payload = context.model_dump(mode="json")
     payload["sources"].sort(key=lambda source: source["source_id"])
     if scenarios is not None:
-        payload["scenario_set"] = scenarios.model_dump(mode="json")
+        payload["scenario_set"] = scenarios.model_dump(mode="json", exclude={"metadata"})
         payload["scenario_set"]["scenarios"].sort(key=lambda scenario: scenario["scenario_id"])
     if repair is not None:
-        payload["repair"] = repair.model_dump(mode="json")
+        payload["repair"] = repair.model_dump(
+            mode="json", exclude={"previous_bundle": {"metadata"}}
+        )
     return ProviderRequest(
         model_id=settings.model_id,
         system_instruction=system_instruction,

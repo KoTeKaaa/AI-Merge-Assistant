@@ -69,6 +69,8 @@ class StageProvider:
             self.api_calls += 1
             if operation == self._provider.generate:
                 self.generation_calls += 1
+                if attempt == 0:
+                    self.generations += 1
             else:
                 self.count_calls += 1
             try:
@@ -85,13 +87,14 @@ class StageProvider:
                     raise ProviderError("deadline_exceeded") from None
                 self._wait(delay)
             else:
+                if isinstance(result, ProviderResponse):
+                    self.usage = result.usage
                 if self._clock() >= self._deadline:
                     raise ProviderError("deadline_exceeded")
                 return result
         raise ProviderError("attempts_exhausted")
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
-        self.generations += 1
         response = self._call(request, self._provider.generate)
         self.usage = response.usage
         return response

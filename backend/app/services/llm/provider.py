@@ -1,11 +1,14 @@
 """Provider port: SDK types and verified generation DTOs do not cross this boundary."""
 
 from math import isfinite
-from typing import Annotated, Any, Protocol
+from typing import TYPE_CHECKING, Annotated, Any, Protocol
 
 from pydantic import Field
 
 from .contracts import Contract, Text
+
+if TYPE_CHECKING:
+    from .telemetry import StageMetadata
 
 Counter = Annotated[int, Field(ge=0)]
 
@@ -42,6 +45,7 @@ class ProviderError(RuntimeError):
         self, code: str, *, retryable: bool = False, retry_after_seconds: float | None = None
     ) -> None:
         # Callers must supply an internal code, not text originating from the provider.
+        self.metadata: StageMetadata | None = None
         self.code = code
         self.retryable = retryable
         self.retry_after_seconds = (
