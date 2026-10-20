@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from math import ceil
+from time import time
 
 import httpx
 from google import genai
@@ -9,17 +10,23 @@ from google.genai import errors, types
 from pydantic import ValidationError
 
 from .provider import ProviderError, ProviderRequest, ProviderResponse, TokenUsage
+from .retries import parse_retry_after
 from .settings import ConfigurationError, LLMSettings
 
 
 class GeminiProvider:
     def __init__(
-        self, settings: LLMSettings, *, client_factory: Callable[..., genai.Client] = genai.Client
+        self,
+        settings: LLMSettings,
+        *,
+        client_factory: Callable[..., genai.Client] = genai.Client,
+        wall_clock: Callable[[], float] = time,
     ) -> None:
         if settings.backend != "gemini" or settings.api_key is None:
             raise ConfigurationError("Gemini provider requires real provider settings")
         self._settings = settings
         self._client_factory = client_factory
+        self._wall_clock = wall_clock
         self.api_calls = 0
 
     def _execute[T](self, request: ProviderRequest, operation: Callable[[genai.Client], T]) -> T:
@@ -54,11 +61,12 @@ class GeminiProvider:
             raise failure from None
         return result
 
-    @staticmethod
-    def _safe_error(error: Exception) -> ProviderError:
+    def _safe_error(self, error: Exception) -> ProviderError:
         if isinstance(error, ProviderError):
             return error
         if isinstance(error, errors.APIError):
+            headers = getattr(error.response, "headers", {})
+            delay = parse_retry_after(headers.get("retry-after"), self._wall_clock())
             if error.code in (401, 403):
                 return ProviderError(
                     "provider_unauthorized" if error.code == 401 else "provider_forbidden"
@@ -66,11 +74,13 @@ class GeminiProvider:
             if error.code == 404:
                 return ProviderError("model_unavailable")
             if error.code == 429:
-                return ProviderError("provider_quota", retryable=True)
+                return ProviderError("provider_quota", retryable=True, retry_after_seconds=delay)
             if error.code == 408:
-                return ProviderError("provider_timeout", retryable=True)
+                return ProviderError("provider_timeout", retryable=True, retry_after_seconds=delay)
             if error.code in (500, 502, 503, 504):
-                return ProviderError("provider_unavailable", retryable=True)
+                return ProviderError(
+                    "provider_unavailable", retryable=True, retry_after_seconds=delay
+                )
             return ProviderError(
                 "provider_invalid_request" if error.code == 400 else "provider_http_error"
             )
