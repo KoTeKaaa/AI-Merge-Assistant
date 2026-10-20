@@ -7,7 +7,7 @@ import httpx
 from google import genai
 from google.genai import errors, types
 
-from .provider import ProviderError, ProviderRequest, ProviderResponse
+from .provider import ProviderError, ProviderRequest, ProviderResponse, TokenUsage
 from .settings import ConfigurationError, LLMSettings
 
 
@@ -85,15 +85,16 @@ class GeminiProvider:
             response = client.models.generate_content(
                 model=request.model_id, contents=request.content, config=self._config(request)
             )
+            usage = self._usage(response.usage_metadata)
             feedback = response.prompt_feedback
             if feedback is not None and feedback.block_reason not in (
                 None,
                 types.BlockedReason.BLOCKED_REASON_UNSPECIFIED,
             ):
-                return ProviderResponse(finish_reason="BLOCKED")
+                return ProviderResponse(finish_reason="BLOCKED", usage=usage)
             candidates = response.candidates or []
             if not candidates:
-                return ProviderResponse()
+                return ProviderResponse(usage=usage)
             if len(candidates) != 1:
                 raise ProviderError("unexpected_candidates")
             candidate = candidates[0]
@@ -108,6 +109,54 @@ class GeminiProvider:
             return ProviderResponse(
                 text="".join(texts) or None,
                 finish_reason=candidate.finish_reason.value if candidate.finish_reason else None,
+                usage=usage,
             )
+
+        return self._execute(request, call)
+
+    @staticmethod
+    def _usage(metadata: types.GenerateContentResponseUsageMetadata | None) -> TokenUsage | None:
+        if metadata is None:
+            return None
+        return TokenUsage(
+            input_tokens=metadata.prompt_token_count,
+            output_tokens=metadata.candidates_token_count,
+            total_tokens=metadata.total_token_count,
+            cached_tokens=metadata.cached_content_token_count,
+            thought_tokens=metadata.thoughts_token_count,
+        )
+
+    def count_tokens(self, request: ProviderRequest) -> int:
+        config = self._config(request)
+        model = request.model_id
+        generation_request = {
+            "model": model if model.startswith("models/") else f"models/{model}",
+            "contents": [{"role": "user", "parts": [{"text": request.content}]}],
+            "systemInstruction": {"role": "user", "parts": [{"text": request.system_instruction}]},
+            "tools": [],
+            "toolConfig": {"functionCallingConfig": {"mode": "NONE"}},
+            "generationConfig": {
+                "candidateCount": 1,
+                "maxOutputTokens": config.max_output_tokens,
+                "responseMimeType": "application/json",
+                "responseJsonSchema": request.response_schema,
+            },
+        }
+
+        def call(client: genai.Client) -> int:
+            self.api_calls += 1
+            # SDK 2.29 lacks Developer API steering fields in CountTokensConfig.
+            result = client.models.count_tokens(
+                model=model,
+                contents=None,
+                config=types.CountTokensConfig(
+                    http_options=types.HttpOptions(
+                        extra_body={"generateContentRequest": generation_request}
+                    )
+                ),
+            )
+            if type(result.total_tokens) is not int or result.total_tokens < 0:
+                raise ProviderError("invalid_token_count")
+            return result.total_tokens
 
         return self._execute(request, call)

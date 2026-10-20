@@ -179,6 +179,18 @@ LLM_MAX_REPAIRS=2
 Timeout ограничен настройкой запроса, повторы SDK выключены (`attempts=1`);
 общий deadline и транспортные повторы будут подключены отдельным этапом.
 
+
+**ASSUMPTION T11:** `count_tokens` отправляет через официальный SDK полный
+[`generateContentRequest`](https://ai.google.dev/api/tokens), включая ту же модель,
+системные инструкции, данные и generation config со схемой ответа. В SDK 2.29.0 это
+передаётся через `CountTokensConfig.http_options.extra_body`: обычные поля steering
+в `CountTokensConfig` не поддерживаются Developer API. Отдельное `contents` не передаётся.
+Отсутствующий или некорректный `total_tokens` — ошибка, настоящий ноль сохраняется.
+`api_calls` у экземпляра адаптера учитывает попытки вызова SDK для генерации и подсчёта;
+экземпляр предназначен для последовательного использования одним worker-вызовом.
+Счётчики usage копируются отдельно: input/output/total/cached/thought; пропуски остаются
+`None`. Usage сохраняется также при блокировке ответа и отсутствии кандидата.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
