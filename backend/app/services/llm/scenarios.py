@@ -5,6 +5,7 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, model_validator
 
 from .contracts import Contract, GenerationContext, Text
+from .telemetry import StageMetadata
 
 Steps = Annotated[tuple[Text, ...], Field(min_length=1)]
 
@@ -34,6 +35,7 @@ class ScenarioDraftSet(Contract):
 class ScenarioSet(ScenarioDraftSet):
     """Service result, never the schema used to parse a model response."""
 
+    metadata: StageMetadata | None = None
     schema_version: Literal["1"]
     run_id: Text
     snapshot_id: Text

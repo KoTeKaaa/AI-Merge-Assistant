@@ -7,9 +7,10 @@ from pydantic import ValidationError
 
 from .budget import prepare_request
 from .bundles import TestBundle, TestBundleDraft
-from .contracts import GenerationContext
+from .contracts import Contract, GenerationContext
 from .decoding import decode_repair, decode_scenarios, decode_tests
 from .feedback import ValidationFeedback
+from .limits import StageBudget
 from .prompts import (
     COVERAGE_REPAIR_PROMPT,
     DEFAULT_SCENARIOS_PROMPT,
@@ -22,6 +23,7 @@ from .repair import RepairDraft, RepairInput, RepairResult
 from .retries import StageProvider
 from .scenarios import ScenarioDraftSet, ScenarioSet
 from .settings import LLMSettings
+from .telemetry import SAFE_ERROR_CODES, StageMetadata
 
 
 class LLMService:
@@ -38,6 +40,131 @@ class LLMService:
         self._clock = clock
         self._wait = wait
 
+    def _stage(self, budget: StageBudget | None, iteration: int) -> StageProvider:
+        if type(iteration) is not int or iteration < 0:
+            raise ProviderError("invalid_feedback")
+        if budget is not None:
+            try:
+                budget = StageBudget.model_validate(budget.model_dump(warnings=False))
+            except ValueError:
+                raise ProviderError("invalid_budget") from None
+            if budget.iteration != iteration:
+                raise ProviderError("invalid_iteration")
+            if budget.remaining_generations == 0:
+                raise ProviderError("generation_budget_exhausted")
+        if iteration > self._settings.max_repairs:
+            raise ProviderError("repair_limit_exceeded")
+        return StageProvider(
+            self._provider, self._settings, clock=self._clock, wait=self._wait, budget=budget
+        )
+
+    def generate_scenarios(
+        self, context: GenerationContext, *, budget: StageBudget | None = None
+    ) -> ScenarioSet:
+        template = DEFAULT_SCENARIOS_PROMPT if context.mode == "default" else LAZY_SCENARIOS_PROMPT
+        return self._execute(
+            context,
+            budget,
+            "scenarios",
+            template.version,
+            0,
+            lambda stage: self._generate_scenarios(context, stage),
+        )
+
+    def generate_tests(
+        self,
+        context: GenerationContext,
+        scenarios: ScenarioSet,
+        *,
+        budget: StageBudget | None = None,
+    ) -> TestBundle:
+        return self._execute(
+            context,
+            budget,
+            "tests",
+            PYTEST_PROMPT.version,
+            0,
+            lambda stage: self._generate_tests(context, scenarios, stage),
+        )
+
+    def repair_tests(
+        self,
+        context: GenerationContext,
+        scenarios: ScenarioSet,
+        previous_bundle: TestBundle,
+        feedback: ValidationFeedback,
+        *,
+        budget: StageBudget | None = None,
+    ) -> RepairResult:
+        template = (
+            COVERAGE_REPAIR_PROMPT if feedback.reason == "coverage_gap" else ERROR_REPAIR_PROMPT
+        )
+        return self._execute(
+            context,
+            budget,
+            "repair",
+            template.version,
+            feedback.iteration,
+            lambda stage: self._repair_tests(context, scenarios, previous_bundle, feedback, stage),
+        )
+
+    def _execute[T: Contract](
+        self,
+        context: GenerationContext,
+        budget: StageBudget | None,
+        name: str,
+        prompt: str,
+        iteration: int,
+        operation: Callable[[StageProvider], T],
+    ) -> T:
+        started = self._clock()
+        stage = None
+        result = None
+        failure = None
+        try:
+            stage = self._stage(budget, iteration)
+            result = operation(stage)
+        except ProviderError as error:
+            failure = error if error.code in SAFE_ERROR_CODES else ProviderError("provider_failure")
+        except Exception:
+            # Never propagate raw port/validation diagnostics with caller data.
+            failure = ProviderError("provider_failure")
+        metadata = StageMetadata(
+            stage=name,
+            backend=self._settings.backend,
+            model_id=self._settings.model_id,
+            prompt_version=prompt,
+            run_id=context.run_id if isinstance(context.run_id, str) else "",
+            snapshot_id=(
+                context.snapshot.snapshot_id
+                if isinstance(getattr(context.snapshot, "snapshot_id", None), str)
+                else ""
+            ),
+            iteration=iteration if type(iteration) is int and iteration >= 0 else 0,
+            duration_seconds=max(0.0, self._clock() - started),
+            api_calls=stage.api_calls if stage else 0,
+            count_calls=stage.count_calls if stage else 0,
+            generation_calls=stage.generation_calls if stage else 0,
+            generations=stage.generations if stage else 0,
+            usage=stage.usage if stage else None,
+            error_code=failure.code if failure else None,
+            last_provider_error_code=(
+                (
+                    stage.last_provider_error_code
+                    if stage.last_provider_error_code in SAFE_ERROR_CODES
+                    else "provider_failure"
+                )
+                if stage is not None and stage.last_provider_error_code is not None
+                else None
+            ),
+            bundle_hash=getattr(result, "bundle_hash", None)
+            or getattr(getattr(result, "bundle", None), "bundle_hash", None),
+        )
+        if failure is not None:
+            failure.metadata = metadata
+            raise failure from None
+        return result.model_copy(update={"metadata": metadata})
+
     @staticmethod
     def _validated_context(context: GenerationContext) -> GenerationContext:
         try:
@@ -46,12 +173,11 @@ class LLMService:
         except ValidationError:
             raise ProviderError("invalid_context") from None
 
-    def generate_scenarios(self, context: GenerationContext) -> ScenarioSet:
+    def _generate_scenarios(self, context: GenerationContext, stage: StageProvider) -> ScenarioSet:
         validated = self._validated_context(context)
         template = (
             DEFAULT_SCENARIOS_PROMPT if validated.mode == "default" else LAZY_SCENARIOS_PROMPT
         )
-        stage = StageProvider(self._provider, self._settings, clock=self._clock, wait=self._wait)
         prepared = prepare_request(
             validated,
             self._settings,
@@ -93,10 +219,11 @@ class LLMService:
         except ValueError:
             raise ProviderError("invalid_scenarios") from None
 
-    def generate_tests(self, context: GenerationContext, scenarios: ScenarioSet) -> TestBundle:
+    def _generate_tests(
+        self, context: GenerationContext, scenarios: ScenarioSet, stage: StageProvider
+    ) -> TestBundle:
         validated = self._validated_context(context)
         validated_scenarios = self._validated_scenarios(validated, scenarios)
-        stage = StageProvider(self._provider, self._settings, clock=self._clock, wait=self._wait)
         prepared = prepare_request(
             validated,
             self._settings,
@@ -117,12 +244,13 @@ class LLMService:
         except ValueError:
             raise ProviderError("invalid_test_bundle") from None
 
-    def repair_tests(
+    def _repair_tests(
         self,
         context: GenerationContext,
         scenarios: ScenarioSet,
         previous_bundle: TestBundle,
         feedback: ValidationFeedback,
+        stage: StageProvider,
     ) -> RepairResult:
         validated = self._validated_context(context)
         validated_scenarios = self._validated_scenarios(validated, scenarios)
@@ -143,7 +271,6 @@ class LLMService:
         template = (
             COVERAGE_REPAIR_PROMPT if checked.reason == "coverage_gap" else ERROR_REPAIR_PROMPT
         )
-        stage = StageProvider(self._provider, self._settings, clock=self._clock, wait=self._wait)
         prepared = prepare_request(
             validated,
             self._settings,
