@@ -6,6 +6,7 @@ from email.utils import parsedate_to_datetime
 from math import isfinite
 from time import monotonic, sleep
 
+from .limits import StageBudget
 from .provider import LLMProvider, ProviderError, ProviderRequest, ProviderResponse
 from .settings import ConfigurationError, LLMSettings
 
@@ -36,6 +37,7 @@ class StageProvider:
         *,
         clock: Callable[[], float] = monotonic,
         wait: Callable[[float], None] = sleep,
+        budget: StageBudget | None = None,
     ) -> None:
         if isinstance(provider, StageProvider):
             raise ConfigurationError("A stage retry layer cannot wrap another stage retry layer")
@@ -43,8 +45,16 @@ class StageProvider:
         self._settings = settings
         self._clock = clock
         self._wait = wait
-        self._deadline = clock() + settings.stage_timeout_seconds
+        self._deadline = clock() + min(
+            settings.stage_timeout_seconds,
+            budget.remaining_seconds if budget is not None else settings.stage_timeout_seconds,
+        )
+        self._max_calls = budget.remaining_api_calls if budget is not None else None
         self.api_calls = 0
+        self.count_calls = 0
+        self.generation_calls = 0
+        self.generations = 0
+        self.usage = None
 
     def _call[T](self, request: ProviderRequest, operation: Callable[[ProviderRequest], T]) -> T:
         for attempt in range(self._settings.max_attempts):
@@ -54,7 +64,13 @@ class StageProvider:
             )
             if timeout < 0.001:
                 raise ProviderError("deadline_exceeded")
+            if self._max_calls is not None and self.api_calls >= self._max_calls:
+                raise ProviderError("api_budget_exhausted")
             self.api_calls += 1
+            if operation == self._provider.generate:
+                self.generation_calls += 1
+            else:
+                self.count_calls += 1
             try:
                 result = operation(request.model_copy(update={"timeout_seconds": timeout}))
             except ProviderError as error:
@@ -75,7 +91,10 @@ class StageProvider:
         raise ProviderError("attempts_exhausted")
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
-        return self._call(request, self._provider.generate)
+        self.generations += 1
+        response = self._call(request, self._provider.generate)
+        self.usage = response.usage
+        return response
 
     def count_tokens(self, request: ProviderRequest) -> int:
         return self._call(request, self._provider.count_tokens)

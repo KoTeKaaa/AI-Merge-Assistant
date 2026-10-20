@@ -10,6 +10,7 @@ from .bundles import TestBundle, TestBundleDraft
 from .contracts import GenerationContext
 from .decoding import decode_repair, decode_scenarios, decode_tests
 from .feedback import ValidationFeedback
+from .limits import StageBudget
 from .prompts import (
     COVERAGE_REPAIR_PROMPT,
     DEFAULT_SCENARIOS_PROMPT,
@@ -38,6 +39,51 @@ class LLMService:
         self._clock = clock
         self._wait = wait
 
+    def _stage(self, budget: StageBudget | None, iteration: int) -> StageProvider:
+        if type(iteration) is not int or iteration < 0:
+            raise ProviderError("invalid_feedback")
+        if budget is not None:
+            try:
+                budget = StageBudget.model_validate(budget.model_dump(warnings=False))
+            except ValueError:
+                raise ProviderError("invalid_budget") from None
+            if budget.iteration != iteration:
+                raise ProviderError("invalid_iteration")
+            if budget.remaining_generations == 0:
+                raise ProviderError("generation_budget_exhausted")
+        if iteration > self._settings.max_repairs:
+            raise ProviderError("repair_limit_exceeded")
+        return StageProvider(
+            self._provider, self._settings, clock=self._clock, wait=self._wait, budget=budget
+        )
+
+    def generate_scenarios(
+        self, context: GenerationContext, *, budget: StageBudget | None = None
+    ) -> ScenarioSet:
+        return self._generate_scenarios(context, self._stage(budget, 0))
+
+    def generate_tests(
+        self,
+        context: GenerationContext,
+        scenarios: ScenarioSet,
+        *,
+        budget: StageBudget | None = None,
+    ) -> TestBundle:
+        return self._generate_tests(context, scenarios, self._stage(budget, 0))
+
+    def repair_tests(
+        self,
+        context: GenerationContext,
+        scenarios: ScenarioSet,
+        previous_bundle: TestBundle,
+        feedback: ValidationFeedback,
+        *,
+        budget: StageBudget | None = None,
+    ) -> RepairResult:
+        return self._repair_tests(
+            context, scenarios, previous_bundle, feedback, self._stage(budget, feedback.iteration)
+        )
+
     @staticmethod
     def _validated_context(context: GenerationContext) -> GenerationContext:
         try:
@@ -46,12 +92,11 @@ class LLMService:
         except ValidationError:
             raise ProviderError("invalid_context") from None
 
-    def generate_scenarios(self, context: GenerationContext) -> ScenarioSet:
+    def _generate_scenarios(self, context: GenerationContext, stage: StageProvider) -> ScenarioSet:
         validated = self._validated_context(context)
         template = (
             DEFAULT_SCENARIOS_PROMPT if validated.mode == "default" else LAZY_SCENARIOS_PROMPT
         )
-        stage = StageProvider(self._provider, self._settings, clock=self._clock, wait=self._wait)
         prepared = prepare_request(
             validated,
             self._settings,
@@ -93,10 +138,11 @@ class LLMService:
         except ValueError:
             raise ProviderError("invalid_scenarios") from None
 
-    def generate_tests(self, context: GenerationContext, scenarios: ScenarioSet) -> TestBundle:
+    def _generate_tests(
+        self, context: GenerationContext, scenarios: ScenarioSet, stage: StageProvider
+    ) -> TestBundle:
         validated = self._validated_context(context)
         validated_scenarios = self._validated_scenarios(validated, scenarios)
-        stage = StageProvider(self._provider, self._settings, clock=self._clock, wait=self._wait)
         prepared = prepare_request(
             validated,
             self._settings,
@@ -117,12 +163,13 @@ class LLMService:
         except ValueError:
             raise ProviderError("invalid_test_bundle") from None
 
-    def repair_tests(
+    def _repair_tests(
         self,
         context: GenerationContext,
         scenarios: ScenarioSet,
         previous_bundle: TestBundle,
         feedback: ValidationFeedback,
+        stage: StageProvider,
     ) -> RepairResult:
         validated = self._validated_context(context)
         validated_scenarios = self._validated_scenarios(validated, scenarios)
@@ -143,7 +190,6 @@ class LLMService:
         template = (
             COVERAGE_REPAIR_PROMPT if checked.reason == "coverage_gap" else ERROR_REPAIR_PROMPT
         )
-        stage = StageProvider(self._provider, self._settings, clock=self._clock, wait=self._wait)
         prepared = prepare_request(
             validated,
             self._settings,
