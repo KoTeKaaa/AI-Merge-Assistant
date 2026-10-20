@@ -306,7 +306,8 @@ UTF-8 JSON со списком path/content/scenario_ids: файлы сорти�
 CoverageFeedback хранит covered/executable_changed_lines и uncovered по файлам; счётчики
 и список должны совпадать. None отличается от настоящего нулевого отчёта; LLM процент не вычисляет.
 `GenerationContext.changed_lines` связывает измеряемые строки с path/source_id; PreparedSource
-получил start_line=1 для фрагментов. Источник — подготовленный code, номера должны попадать
+получил start_line=1 для фрагментов. На файл передаётся один измеряемый фрагмент.
+Источник — подготовленный code, номера должны попадать
 в его диапазон. E3/E4 определяют исполняемые изменённые строки и их привязку к снимку.
 Feedback.validate_for сверяет run/snapshot/hash, строки готовых артефактов, измеряемый набор
 и uncovered. Источники changed_lines закрепляются при усечении; XML/coverage-файлы модуль не читает.
@@ -328,6 +329,19 @@ RepairResult добавляет run/snapshot, previous_bundle_hash и iteration;
 и исключения. Старые файлы/связи и полезные assertions сохраняются; исключение строк,
 правки coverage и пустые вызовы ради процента запрещены. При недостатке оснований для
 ожидаемого результата используется cannot_repair. Допуск ≥90% остаётся у оркестратора.
+
+
+**ASSUMPTION T25:** `LLMService.repair_tests(context, scenarios, previous_bundle, feedback)`
+выполняет ровно один этап. До API повторно проверяются DTO, хеш/пути/связи прежнего набора
+и соответствие feedback; iteration выше max_repairs и coverage_missing блокируют запрос.
+Для coverage_gap выбирается coverage-промпт, для ошибок — error-промпт. Сценарии, прежний
+набор и feedback полностью входят в бюджет и один deadline; обязательные данные не усекаются.
+Replace должен сохранить все прежние пары путь/scenario_id; разрешены замена собственного
+файла и добавление новых допустимых файлов. Неверные артефакты и неизменившийся хеш — ошибки,
+не повод скрыто вызывать модель повторно. Cannot_repair возвращается явно с explanation;
+оба исхода привязаны к previous_bundle_hash и iteration. Код не записывается и не выполняется.
+Данные входа не выводятся через предупреждения сериализатора; ошибки возвращаются безопасными
+кодами. Общий цикл, оставшиеся run-бюджеты и фактическое исполнение принадлежат оркестратору/runner.
 
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
