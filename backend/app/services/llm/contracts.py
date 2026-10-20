@@ -11,7 +11,7 @@ Mode = Literal["default", "lazy"]
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
 
-    def __repr_args__(self):
+    def __repr_args__(self) -> list[tuple[str | None, object]]:
         return []
 
 

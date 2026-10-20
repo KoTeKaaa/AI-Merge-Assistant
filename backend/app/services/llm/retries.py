@@ -55,6 +55,7 @@ class StageProvider:
         self.generation_calls = 0
         self.generations = 0
         self.usage = None
+        self.last_provider_error_code = None
 
     def _call[T](self, request: ProviderRequest, operation: Callable[[ProviderRequest], T]) -> T:
         for attempt in range(self._settings.max_attempts):
@@ -76,12 +77,15 @@ class StageProvider:
             try:
                 result = operation(request.model_copy(update={"timeout_seconds": timeout}))
             except ProviderError as error:
+                self.last_provider_error_code = error.code
                 if not error.retryable:
                     raise
                 if self._clock() >= self._deadline:
                     raise ProviderError("deadline_exceeded") from None
                 if attempt + 1 == self._settings.max_attempts:
                     raise ProviderError("attempts_exhausted") from None
+                if self._max_calls is not None and self.api_calls >= self._max_calls:
+                    raise ProviderError("api_budget_exhausted") from None
                 delay = max(2 ** min(attempt, 3), error.retry_after_seconds or 0)
                 if delay >= self._deadline - self._clock():
                     raise ProviderError("deadline_exceeded") from None

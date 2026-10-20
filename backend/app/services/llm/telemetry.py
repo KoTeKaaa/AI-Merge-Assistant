@@ -25,6 +25,7 @@ class StageMetadata(Contract):
     generations: Count
     usage: TokenUsage | None = None
     error_code: str | None = None
+    last_provider_error_code: str | None = None
     bundle_hash: str | None = None
 
     def log_fields(self) -> dict[str, str | int | float]:

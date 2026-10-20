@@ -148,6 +148,15 @@ class LLMService:
             generations=stage.generations if stage else 0,
             usage=stage.usage if stage else None,
             error_code=failure.code if failure else None,
+            last_provider_error_code=(
+                (
+                    stage.last_provider_error_code
+                    if stage.last_provider_error_code in SAFE_ERROR_CODES
+                    else "provider_failure"
+                )
+                if stage is not None and stage.last_provider_error_code is not None
+                else None
+            ),
             bundle_hash=getattr(result, "bundle_hash", None)
             or getattr(getattr(result, "bundle", None), "bundle_hash", None),
         )
