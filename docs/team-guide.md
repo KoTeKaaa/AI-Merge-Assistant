@@ -117,6 +117,18 @@ draft. Итоговый `ScenarioSet` — DTO для хранения/перед
 Каркас не создаёт SDK-клиент при импорте. Runtime-зависимости модуля перечислены в
 `backend/requirements-llm.txt`.
 
+
+**ASSUMPTION T7:** модель возвращает `TestBundleDraft` (`bundles.py`) со списком
+`files`: `path`, непустой `content` и непустые `scenario_ids`. Сервис вызывает
+`TestBundle.from_context(draft, context, scenarios)`, сверяет run/snapshot ID и ссылки
+на сценарии, добавляет версию и идентификаторы контекста. Артефакты остаются непроверенными.
+Принимаются только `.py` в `generated_tests_dir`, с каноническими относительными POSIX-путями.
+Запрещены обходы `..`, абсолютные/Windows-пути, повторные разделители, управляющие символы,
+кодирование через `%`, зарезервированные Windows-имена и дубли путей без учёта регистра.
+`protected_paths` защищает перечисленные файлы и каталоги без учёта регистра. Поставщик
+контекста обязан перечислить существующие защищённые пути; шлюз дополнительно проверяет
+реальную файловую систему, symlink и допустимость кода. DTO ничего не записывает и не запускает.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
