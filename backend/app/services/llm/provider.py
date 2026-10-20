@@ -1,5 +1,6 @@
 """Provider port: SDK types and verified generation DTOs do not cross this boundary."""
 
+from math import isfinite
 from typing import Annotated, Any, Protocol
 
 from pydantic import Field
@@ -37,10 +38,19 @@ class ProviderResponse(Contract):
 class ProviderError(RuntimeError):
     """Safe code and retry policy, never an original SDK diagnostic."""
 
-    def __init__(self, code: str, *, retryable: bool = False) -> None:
+    def __init__(
+        self, code: str, *, retryable: bool = False, retry_after_seconds: float | None = None
+    ) -> None:
         # Callers must supply an internal code, not text originating from the provider.
         self.code = code
         self.retryable = retryable
+        self.retry_after_seconds = (
+            retry_after_seconds
+            if retry_after_seconds is not None
+            and isfinite(retry_after_seconds)
+            and retry_after_seconds >= 0
+            else None
+        )
         super().__init__(code)
 
 

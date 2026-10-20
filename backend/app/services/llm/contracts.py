@@ -32,11 +32,14 @@ class PreparedSource(Contract):
     kind: Literal["description", "requirements", "diff", "code", "existing_test"]
     text: Annotated[str, StringConstraints(min_length=1)]
     path: Text | None = None
+    optional: Annotated[bool, Field(strict=True)] = False
 
     @model_validator(mode="after")
     def require_content(self) -> Self:
         if not self.text.strip():
             raise ValueError("source text must not be blank")
+        if self.optional and self.kind not in {"code", "existing_test"}:
+            raise ValueError("only supporting code and existing tests may be optional")
         return self
 
 
