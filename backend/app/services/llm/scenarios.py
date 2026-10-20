@@ -38,9 +38,18 @@ class ScenarioSet(ScenarioDraftSet):
     run_id: Text
     snapshot_id: Text
     expectation_origin: Literal["requirements", "inferred"]
+    prompt_version: Text | None = None
+    omitted_source_ids: tuple[Text, ...] = ()
 
     @classmethod
-    def from_context(cls, draft: ScenarioDraftSet, context: GenerationContext) -> Self:
+    def from_context(
+        cls,
+        draft: ScenarioDraftSet,
+        context: GenerationContext,
+        *,
+        prompt_version: str | None = None,
+        omitted_source_ids: tuple[str, ...] = (),
+    ) -> Self:
         source_ids = {source.source_id for source in context.sources}
         if any(set(scenario.source_ids) - source_ids for scenario in draft.scenarios):
             raise ValueError("scenario references an unknown source")
@@ -50,4 +59,6 @@ class ScenarioSet(ScenarioDraftSet):
             run_id=context.run_id,
             snapshot_id=context.snapshot.snapshot_id,
             expectation_origin="inferred" if context.mode == "lazy" else "requirements",
+            prompt_version=prompt_version,
+            omitted_source_ids=omitted_source_ids,
         )
