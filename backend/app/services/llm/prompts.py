@@ -105,3 +105,19 @@ generated tests, only when consistent with the prepared code interface and requi
 A failure in an existing test does not authorize modifying that test or production code.
 """,
 )
+
+COVERAGE_REPAIR_PROMPT = PromptTemplate(
+    version="tests.repair.coverage.v1",
+    system_instruction="Prompt version: tests.repair.coverage.v1.\n"
+    + _REPAIR_RULES
+    + """
+Use repair.feedback.coverage.uncovered to add behavioral cases for unexecuted changed lines.
+The trusted measured set is context changed_lines; code fragments have start_line offsets.
+Relate new cases to supplied scenarios, including uncovered boundary and exception branches.
+Preserve every earlier scenario and file link and retain existing useful assertions.
+Do not remove tests, weaken assertions, exclude lines from measurement, edit coverage config,
+or add no-op calls merely to raise a percentage. Coverage is external evidence, not correctness.
+If no scenario justifies an expected value for an uncovered branch, explain cannot_repair
+rather than invent a requirement or manipulate the coverage report.
+""",
+)

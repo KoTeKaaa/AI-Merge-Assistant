@@ -321,6 +321,14 @@ Feedback.validate_for сверяет run/snapshot/hash, строки готов�
 RepairResult добавляет run/snapshot, previous_bundle_hash и iteration; replace остаётся
 непроверенным предложением, cannot_repair не является пустым успешным набором.
 
+
+**ASSUMPTION T24:** `COVERAGE_REPAIR_PROMPT`, версия `tests.repair.coverage.v1`,
+получает uncovered и связанные фрагменты с line-offset из того же измеряемого снимка.
+Дополнительные случаи должны проверять поведение исходных сценариев, включая границы
+и исключения. Старые файлы/связи и полезные assertions сохраняются; исключение строк,
+правки coverage и пустые вызовы ради процента запрещены. При недостатке оснований для
+ожидаемого результата используется cannot_repair. Допуск ≥90% остаётся у оркестратора.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
