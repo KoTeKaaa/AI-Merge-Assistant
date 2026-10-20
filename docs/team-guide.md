@@ -298,6 +298,19 @@ UTF-8 JSON со списком path/content/scenario_ids: файлы сорти�
 Неверный ответ не перегенерируется скрыто. Фасад возвращает только текстовые артефакты;
 запись, сбор pytest, выполнение и решение о качестве остаются у шлюза/runner/оркестратора.
 
+
+**ASSUMPTION T22:** `ValidationFeedback` (`feedback.py`) несёт версию 1, run/snapshot,
+точный bundle_hash, положительный iteration, reason, нормализованные issues и coverage
+либо None. Причины: validation_error/collection_error/test_failure/coverage_gap/coverage_missing.
+Диагностика — недоверенный текст; путь относительный, номер строки положительный.
+CoverageFeedback хранит covered/executable_changed_lines и uncovered по файлам; счётчики
+и список должны совпадать. None отличается от настоящего нулевого отчёта; LLM процент не вычисляет.
+`GenerationContext.changed_lines` связывает измеряемые строки с path/source_id; PreparedSource
+получил start_line=1 для фрагментов. Источник — подготовленный code, номера должны попадать
+в его диапазон. E3/E4 определяют исполняемые изменённые строки и их привязку к снимку.
+Feedback.validate_for сверяет run/snapshot/hash, строки готовых артефактов, измеряемый набор
+и uncovered. Источники changed_lines закрепляются при усечении; XML/coverage-файлы модуль не читает.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.

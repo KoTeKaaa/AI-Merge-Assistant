@@ -35,6 +35,7 @@ def prepare_request(
         if scenarios is not None
         else set()
     )
+    pinned_ids.update(file.source_id for file in context.changed_lines)
     omitted: tuple[str, ...] = ()
     for check in (1, 2):
         request = build_request(
