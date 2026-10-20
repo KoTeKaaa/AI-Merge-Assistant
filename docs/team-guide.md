@@ -220,6 +220,14 @@ SDK-ошибок, ответов, запросов или ключа. Ошибк
 Исчерпание попыток и deadline — отдельные ошибки без нового повтора на этом уровне.
 `api_calls` слоя учитывает каждую попытку, включая подсчёт токенов; часы и ожидание внедряемы.
 
+
+**ASSUMPTION T14:** `build_request` (`context.py`) принимает готовый GenerationContext,
+внедрённые настройки, доверенные системные инструкции и JSON Schema. Контекст сериализуется
+в JSON с отсортированными ключами и источниками по source ID; Unicode, значимые пробелы,
+ID снимка и источников, профиль и пути сохраняются. Тексты остаются внутри пользовательских
+данных и не добавляются к системным инструкциям. Файлы, окружение, сеть, AST и документы
+сборщик не читает. Требуется явный model ID, в том числе синтетический для fake.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
