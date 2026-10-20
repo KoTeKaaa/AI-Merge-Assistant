@@ -6,6 +6,7 @@ from typing import Any
 
 from .contracts import GenerationContext
 from .provider import ProviderRequest
+from .scenarios import ScenarioSet
 from .settings import ConfigurationError, LLMSettings
 
 
@@ -15,12 +16,16 @@ def build_request(
     *,
     system_instruction: str,
     response_schema: dict[str, Any],
+    scenarios: ScenarioSet | None = None,
 ) -> ProviderRequest:
     """Serialize source text as JSON data; never splice it into system instructions."""
     if settings.model_id is None:
         raise ConfigurationError("Request construction requires an explicit model ID")
     payload = context.model_dump(mode="json")
     payload["sources"].sort(key=lambda source: source["source_id"])
+    if scenarios is not None:
+        payload["scenario_set"] = scenarios.model_dump(mode="json")
+        payload["scenario_set"]["scenarios"].sort(key=lambda scenario: scenario["scenario_id"])
     return ProviderRequest(
         model_id=settings.model_id,
         system_instruction=system_instruction,
