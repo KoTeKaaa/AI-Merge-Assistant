@@ -169,6 +169,16 @@ LLM_MAX_REPAIRS=2
 вызовов, поэтому его нельзя использовать для длительного хранения реальных данных.
 Сеть, логирование, SDK-клиент и автоматическое переключение на fake отсутствуют.
 
+
+**ASSUMPTION T10:** `GeminiProvider` (`gemini.py`) использует Gemini Developer API,
+явный ключ и model ID из внедрённых настроек; другой model ID в запросе отклоняется.
+Клиент создаётся на один вызов и закрывается при успехе и ошибке. Endpoint зафиксирован
+на `generativelanguage.googleapis.com`, версия API — `v1beta`; Vertex/Enterprise отключены.
+Запрос передаёт JSON Schema, отдельные системные инструкции и данные, лимит вывода
+(не выше настроенного), один candidate. Tools и automatic function calling отключены.
+Timeout ограничен настройкой запроса, повторы SDK выключены (`attempts=1`);
+общий deadline и транспортные повторы будут подключены отдельным этапом.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
