@@ -249,6 +249,13 @@ BudgetedRequest содержит фактические context/request, input_t
 должны существовать во входе. Шаблон статичен, данные не подставляются в системные инструкции;
 сценарии содержат наблюдаемые исходы, а происхождение и результаты исполнения модель не задаёт.
 
+
+**ASSUMPTION T17:** `LAZY_SCENARIOS_PROMPT` (`prompts.py`), версия `scenarios.lazy.v1`,
+выводит ожидания из diff с опорой на связанный код и существующие тесты, в том числе для
+новых файлов. Подтверждённых пользовательских требований в этом режиме не заявляет;
+неоднозначность и предварительный характер ожиданий отражает в ambiguities. Ссылки —
+только на имеющиеся diff/code/existing_test; сервер назначает происхождение inferred.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.

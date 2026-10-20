@@ -36,3 +36,19 @@ If requirements are incomplete or conflicting, report the gap instead of present
 an invented resolution as a confirmed requirement.
 """,
 )
+
+LAZY_SCENARIOS_PROMPT = PromptTemplate(
+    version="scenarios.lazy.v1",
+    system_instruction="Prompt version: scenarios.lazy.v1.\n"
+    + _SCENARIO_RULES
+    + """
+Mode: lazy. Infer likely expected behavior from the prepared diff; use related code
+and existing tests only to clarify the changed behavior. There is no authoritative
+user requirement in this mode. Do not invent or claim confirmed requirements.
+Cite only actual diff, code or existing_test source IDs used for each scenario.
+For new files, infer behavior from their additions and available related context.
+For ambiguous changes, describe missing information in ambiguities; do not present
+an arbitrary interpretation as certain. State provisional expectations as such
+in ambiguities. The service marks all lazy scenarios as inferred; do not add that field.
+""",
+)
