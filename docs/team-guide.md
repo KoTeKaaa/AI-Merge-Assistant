@@ -129,6 +129,30 @@ draft. Итоговый `ScenarioSet` — DTO для хранения/перед
 контекста обязан перечислить существующие защищённые пути; шлюз дополнительно проверяет
 реальную файловую систему, symlink и допустимость кода. DTO ничего не записывает и не запускает.
 
+
+**ASSUMPTION T8:** `LLMSettings` (`settings.py`) внедряется приложением. Для реального
+провайдера обязательны `LLM_MODEL` и `GEMINI_API_KEY`; скрытой модели и fallback нет.
+`LLM_BACKEND` по умолчанию `gemini`, значение `fake` выбирается только явно и не требует
+ключа. `from_environment(mapping)` получает уже подготовленное окружение и не читает `.env`.
+Пример несекретной части окружения (model ID выбирается под доступную модель):
+
+```dotenv
+LLM_BACKEND=gemini
+LLM_MODEL=<available-model-id>
+LLM_STAGE_TIMEOUT_SECONDS=120
+LLM_REQUEST_TIMEOUT_SECONDS=60
+LLM_MAX_ATTEMPTS=3
+LLM_MAX_INPUT_TOKENS=24000
+LLM_MAX_OUTPUT_TOKENS=8000
+LLM_MAX_REPAIRS=2
+```
+
+Ключ передаётся отдельно через секретное окружение. Все лимиты положительны и конечны;
+`max_repairs` допускает ноль. Это исходная калибровка T3, не квоты API. Адаптер должен
+ограничивать запрос оставшимся deadline; цикл доработок остаётся у оркестратора.
+Ключ исключён из repr/сериализации настроек; ошибка конфигурации имеет фиксированный
+текст без исходных входных данных. Для SDK ключ извлекается явно из `SecretStr`.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
