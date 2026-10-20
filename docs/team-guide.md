@@ -153,6 +153,22 @@ LLM_MAX_REPAIRS=2
 Ключ исключён из repr/сериализации настроек; ошибка конфигурации имеет фиксированный
 текст без исходных входных данных. Для SDK ключ извлекается явно из `SecretStr`.
 
+
+**ASSUMPTION T9:** синхронный порт `LLMProvider` (`provider.py`) имеет
+`generate(ProviderRequest) -> ProviderResponse` и `count_tokens(ProviderRequest) -> int`.
+Оба метода получают одинаковый запрос: model ID, системные инструкции, подготовленный
+текст, JSON Schema, лимит вывода и timeout. SDK-типы остаются внутри будущего адаптера.
+`ProviderResponse` содержит сырой `text`, `finish_reason` и необязательный `TokenUsage`;
+это ещё не валидированный ScenarioSet/TestBundle. Отсутствующие счётчики — `None`,
+нулевые значения сохраняются; категории не суммируются автоматически.
+`ProviderError` переносит только внутренний безопасный код и `retryable`.
+
+`FakeProvider` (`fake.py`) внедряется явно для offline-режима: воспроизводит очередь
+ответов/ошибок и отдельно очередь результатов подсчёта токенов. Исчерпание очереди —
+ошибка, не пустой успех. Fake сохраняет глубокие копии запросов в памяти для контроля
+вызовов, поэтому его нельзя использовать для длительного хранения реальных данных.
+Сеть, логирование, SDK-клиент и автоматическое переключение на fake отсутствуют.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
