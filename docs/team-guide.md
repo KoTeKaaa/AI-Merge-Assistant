@@ -256,6 +256,19 @@ BudgetedRequest содержит фактические context/request, input_t
 неоднозначность и предварительный характер ожиданий отражает в ambiguities. Ссылки —
 только на имеющиеся diff/code/existing_test; сервер назначает происхождение inferred.
 
+
+**ASSUMPTION T18:** `LLMService(provider, settings).generate_scenarios(context)`
+(`service.py`) возвращает ScenarioSet. Внедряется single-attempt порт (Gemini либо явный
+fake); SDK-типы через фасад не проходят. На каждый вызов создаётся новый StageProvider:
+один deadline охватывает бюджет и генерацию. Вход повторно проверяется до API; затем
+выбирается промпт по режиму, выполняются подсчёт, генерация, строгий разбор draft и
+привязка к эффективному контексту. Неизвестные или исключённые source ID отвергаются.
+Содержательные ошибки ответа и неверные ссылки не запускают перегенерацию.
+ScenarioSet дополнительно несёт назначенные сервисом `prompt_version` и
+`omitted_source_ids`; модель не может передать их в draft. По умолчанию при прямой
+привязке DTO эти поля равны None/пустому списку. Полные метаданные этапа добавляются
+следующим отдельным контрактом; фасад не принимает решений о прохождении тестов и мерже.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
