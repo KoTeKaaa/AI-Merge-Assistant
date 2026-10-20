@@ -269,6 +269,15 @@ ScenarioSet дополнительно несёт назначенные сер�
 привязке DTO эти поля равны None/пустому списку. Полные метаданные этапа добавляются
 следующим отдельным контрактом; фасад не принимает решений о прохождении тестов и мерже.
 
+
+**ASSUMPTION T19:** `PYTEST_PROMPT` (`prompts.py`), версия `tests.pytest.v1`,
+преобразует переданный `scenario_set` в новые pytest-файлы с явными assertions и связями
+со всеми сценариями. `build_request(..., scenarios=...)` добавляет сценарии в данные
+запроса с сортировкой по ID; разрешённый каталог, защищённые пути и профиль остаются
+в том же контексте. Шаблон запрещает skip/xfail, искусственное ослабление проверок,
+правки исходников/существующих тестов/настроек, установочные команды и выполнение кода.
+Это инструкции генератору; исполняемость и допустимость проверяет внешний шлюз в sandbox.
+
 Минимальная модель данных: User/Session, GitHubConnection, Installation/Repository, Run, Attempt, Scenario, Artifact, CoverageReport, GitHubAction. User владеет Run; Attempt хранит снимок и хеш тестов; CoverageReport связан с конкретной Attempt. GitHubAction хранит инициатора и ожидаемые SHA. Состояние выполнения, результат проверки и состояние мержа не смешиваются.
 
 Предлагаемые состояния (**T1**): `queued`, `preparing`, `generating`, `validating`, `running`, `checking_coverage`, `improving`, `completed`, `failed`, `cancelled`. Отдельно: verdict `passed/failed/not_applicable`, актуальность `current/stale`, merge status. `completed` само по себе не включает кнопку мержа. Причина ошибки различает модель, окружение, тесты, квоту, права и устаревший снимок.
