@@ -63,6 +63,8 @@ class MergeStatus(str, Enum):
 class Mode(str, Enum):
     DEFAULT = "default"
     LAZY = "lazy"
+    MANUAL = "manual"
+    AUTO = "auto"
 
 
 class RunnerMode(str, Enum):
@@ -181,7 +183,7 @@ class ScenarioSet(SchemaVersionMixin):
     set_id: UUID
     run_id: UUID
     snapshot_id: UUID
-    scenarios: list[ScenarioItem] = Field(..., min_items=1)
+    scenarios: list[ScenarioItem] = Field(..., min_length=1)
     prompt_model: str = Field(..., min_length=1, max_length=256)
     prompt_version: str = Field(..., min_length=1, max_length=32)
     usage: Literal["known", "unknown"] = "unknown"
@@ -205,7 +207,7 @@ class TestBundle(SchemaVersionMixin):
     bundle_id: UUID
     run_id: UUID
     snapshot_id: UUID
-    tests: list[TestItem] = Field(..., min_items=1)
+    tests: list[TestItem] = Field(..., min_length=1)
     bundle_hash: str = Field(..., min_length=32, max_length=128)
     prompt_model: str
     prompt_version: str
@@ -419,7 +421,7 @@ VALID_TRANSITIONS: dict[ExecutionState, set[ExecutionState]] = {
     ExecutionState.VALIDATING: {ExecutionState.RUNNING, ExecutionState.FAILED, ExecutionState.CANCELLED},
     ExecutionState.RUNNING: {ExecutionState.CHECKING_COVERAGE, ExecutionState.FAILED, ExecutionState.CANCELLED},
     ExecutionState.CHECKING_COVERAGE: {ExecutionState.IMPROVING, ExecutionState.COMPLETED, ExecutionState.FAILED, ExecutionState.CANCELLED},
-    ExecutionState.IMPROVING: {ExecutionState.GENERATING, ExecutionState.COMPLETED, ExecutionState.FAILED, ExecutionState.CANCELLED},
+    ExecutionState.IMPROVING: {ExecutionState.VALIDATING, ExecutionState.RUNNING},
     ExecutionState.COMPLETED: set(),  # Terminal
     ExecutionState.FAILED: set(),    # Terminal
     ExecutionState.CANCELLED: set(), # Terminal

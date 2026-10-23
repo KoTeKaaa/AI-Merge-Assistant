@@ -92,22 +92,26 @@ class RunState:
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def with_changes(self, **kwargs) -> RunState:
-        """Создаёт новый RunState с изменениями (immutable pattern)."""
+        """Создаёт новый RunState с изменениями (immutable pattern), не затирая поля при None."""
+        def _pick(key: str, current_val):
+            val = kwargs.get(key)
+            return current_val if val is None else val
+
         return RunState(
-            run_id=kwargs.get("run_id", self.run_id),
-            execution_state=kwargs.get("execution_state", self.execution_state),
-            verdict=kwargs.get("verdict", self.verdict),
-            freshness=kwargs.get("freshness", self.freshness),
-            merge_status=kwargs.get("merge_status", self.merge_status),
-            attempt_id=kwargs.get("attempt_id", self.attempt_id),
-            snapshot_id=kwargs.get("snapshot_id", self.snapshot_id),
-            test_bundle_hash=kwargs.get("test_bundle_hash", self.test_bundle_hash),
-            source_sha=kwargs.get("source_sha", self.source_sha),
-            target_sha=kwargs.get("target_sha", self.target_sha),
-            improving_iteration=kwargs.get("improving_iteration", self.improving_iteration),
-            remaining_budget=kwargs.get("remaining_budget", self.remaining_budget),
-            error_category=kwargs.get("error_category", self.error_category),
-            error_message=kwargs.get("error_message", self.error_message),
+            run_id=_pick("run_id", self.run_id),
+            execution_state=_pick("execution_state", self.execution_state),
+            verdict=_pick("verdict", self.verdict),
+            freshness=_pick("freshness", self.freshness),
+            merge_status=_pick("merge_status", self.merge_status),
+            attempt_id=_pick("attempt_id", self.attempt_id),
+            snapshot_id=_pick("snapshot_id", self.snapshot_id),
+            test_bundle_hash=_pick("test_bundle_hash", self.test_bundle_hash),
+            source_sha=_pick("source_sha", self.source_sha),
+            target_sha=_pick("target_sha", self.target_sha),
+            improving_iteration=_pick("improving_iteration", self.improving_iteration),
+            remaining_budget=_pick("remaining_budget", self.remaining_budget),
+            error_category=_pick("error_category", self.error_category),
+            error_message=_pick("error_message", self.error_message),
             updated_at=datetime.now(timezone.utc),
         )
 
